@@ -850,10 +850,10 @@
                         <viewLayoutGuide key="safeArea" id="UM8-ao-vie"/>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
-                            <constraint firstItem="Vub-GF-rcZ" firstAttribute="leading" secondItem="cWR-j0-9RL" secondAttribute="leading" id="M3S-8f-QF9"/>
+                            <constraint firstItem="Vub-GF-rcZ" firstAttribute="leading" secondItem="UM8-ao-vie" secondAttribute="leading" id="M3S-8f-QF9"/>
                             <constraint firstItem="UM8-ao-vie" firstAttribute="top" secondItem="Vub-GF-rcZ" secondAttribute="top" id="Skn-mS-kF3"/>
                             <constraint firstAttribute="bottom" secondItem="Vub-GF-rcZ" secondAttribute="bottom" id="YdJ-zd-pDY"/>
-                            <constraint firstAttribute="trailing" secondItem="Vub-GF-rcZ" secondAttribute="trailing" id="nTw-jJ-HRR"/>
+                            <constraint firstItem="UM8-ao-vie" firstAttribute="trailing" secondItem="Vub-GF-rcZ" secondAttribute="trailing" id="nTw-jJ-HRR"/>
                         </constraints>
                     </view>
                     <navigationItem key="navigationItem" title="Analytics" id="ZsS-6m-45i"/>
@@ -1050,7 +1050,6 @@
                                                 </buttonConfiguration>
                                                 <connections>
                                                     <action selector="didTapSkip:" destination="XvG-Wc-XIz" eventType="touchUpInside" id="vaz-3u-T6L"/>
-                                                    <action selector="skipButtonTapped:" destination="XvG-Wc-XIz" eventType="touchUpInside" id="WO3-RH-w9m"/>
                                                 </connections>
                                             </button>
                                         </subviews>

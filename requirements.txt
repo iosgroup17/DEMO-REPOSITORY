@@ -1,6 +1,14 @@
-fastapi
-uvicorn
-supabase
-python-dotenv
-google-genai
-pydantic
+# --- Core Integration ---
+python-dotenv>=1.0.1
+google-genai>=0.3.0
+supabase>=2.3.1
+
+# --- Backend & Security (Fixed for Windows/Mac binary support) ---
+# We use >= to allow pip to find the best .whl for the specific OS
+cryptography>=44.0.0
+pydantic>=2.9.2
+pydantic-core>=2.23.0
+
+# --- Networking ---
+httpx>=0.27.2
+requests>=2.32.3

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
-from app.database.supabase_client import SupabaseContextManager
-from app.engine.generator import StrategicGenerator
-from app.engine.trend_service import TrendService
+from app.database import SupabaseContextManager
+from app.engine import StrategicGenerator
+from app.services import TrendService
 import uvicorn
 
 app = FastAPI(title="Prosper Content Engine")

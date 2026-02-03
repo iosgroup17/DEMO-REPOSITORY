@@ -1,33 +1,59 @@
+import os
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, HTTPException
 from app.database import SupabaseContextManager
 from app.engine import StrategicGenerator
 from app.services import TrendService
-import uvicorn
 
 app = FastAPI(title="Prosper Content Engine")
-
-# Initialize core components once
 db = SupabaseContextManager()
 ai = StrategicGenerator()
+trend_sync = TrendService(api_token=os.getenv("APIFY_API_KEY"))
 
-trends_api  = TrendService()
+@app.get("/discover/{user_id}")
+async def get_unified_discover_feed(user_id: str):
+    user_context = db.fetch_user_context(user_id)
+    if not user_context:
+        raise HTTPException(status_code=404, detail="User profile not found")
 
-@app.get("/generate/{user_id}")
-async def generate_content(user_id: str):
-    # 1. Fetch cached trends for Row 1 (Fast)
-    trending_row = db.supabase.table("trending_topics").select("*").limit(5).execute().data
+    trends = db.fetch_top_trends(limit=5)
     
-    # 2. Fetch User Context for Row 2
-    context = db.fetch_user_context(user_id)
-    
-    # 3. Generate 5-6 Recommended Posts (Real-time)
-    # This is NOT saved to the DB yet.
-    recommended_row = ai.generate_home_screen_posts(context)
-    
+    # Logic to determine if Apify sync is needed
+    should_sync = False
+    if not trends:
+        should_sync = True
+    else:
+        # Parse Supabase timestamp and compare to current UTC time
+        last_sync = datetime.fromisoformat(trends[0]['created_at'].replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) - last_sync > timedelta(hours=6):
+            should_sync = True
+
+    if should_sync:
+        print("Trends stale or missing. Triggering Apify sync...")
+        query = f"{user_context['industry']} trends 2026"
+        trend_sync.sync_to_dummy(query=query)
+        trends = db.fetch_top_trends(limit=5)
+
+    personalized_posts = ai.generate_personalized_feed(user_context, trends)
+
     return {
-        "trending_topics": trending_row,
-        "recommended_posts": recommended_row
+        "user_identity": user_context,
+        "trending_row": trends,
+        "recommended_row": personalized_posts
     }
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.post("/save-post/{user_id}")
+async def save_selected_post(user_id: str, post_data: dict):
+    try:
+        payload = {
+            "user_id": user_id,
+            "post_heading": post_data.get("post_heading"),
+            "platform_icon": post_data.get("platform_icon"),
+            "caption": post_data.get("caption"),
+            "hashtags": post_data.get("hashtags"),
+            "prediction_text": post_data.get("prediction_text")
+        }
+        result = db.supabase.table("publish_ready_posts").insert(payload).execute()
+        return {"status": "success", "data": result.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

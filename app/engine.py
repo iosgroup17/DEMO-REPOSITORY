@@ -1,47 +1,48 @@
 import os
+import json
 from google import genai
-from google.genai import types # Import for structured output
+from google.genai import types
 
 class StrategicGenerator:
     def __init__(self):
-        # Gemini 2.5 Flash is highly efficient for high-throughput tasks
+        # Gemini 2.5 Flash for high-speed, real-time generation
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         self.model_id = "gemini-2.5-flash" 
 
-    def generate_publish_ready_posts(self, context: dict, trends: list):
-        # Convert trends list to a readable string for the prompt
-        trend_text = "\n".join([f"- {t['title']}: {t['snippet']}" for t in trends])
+    def generate_personalized_feed(self, context: dict, trends: list):
+        """Phase 2: Generates 6 posts with full context and DB-ready keys."""
+        trend_text = "\n".join([f"- {t['topic_name']}: {t['short_description']}" for t in trends])
 
         prompt = f"""
-        Act as a premier social media ghostwriter for a {context['role']}.
+        Act as a premier social media ghostwriter for {context['display_name']}.
         
-        <context>
-        Bio: {context['short_bio']}
-        Current Focus: {context['current_focus']}
-        Industry: {context['industry']}
-        Goal: {context['goal']}
-        </context>
+        <identity_context>
+        - Role: {context['role']} in {context['industry']}
+        - Short Bio: {context['short_bio']}
+        - Current Focus: {context['current_focus']}
+        - Strategic Goal: {context['goal']}
+        </identity_context>
         
+        <audience_targeting>
+        - Target Audience: {', '.join(context['audience'])}
+        - Content Platforms: {', '.join(context['platforms'])}
+        - Content Style: {', '.join(context['formats'])}
+        </audience_targeting>
+
         <trending_now>
         {trend_text}
         </trending_now>
 
         TASK:
-        Generate 3 distinct, high-impact posts for {', '.join(context['platforms'])}.
-        The target audience is: {', '.join(context['audience'])}.
-        Style: Use {', '.join(context['formats'])}.
-        
-        STRATEGY:
-        Anchoring: Every post MUST reference or be inspired by one of the 'trending_now' topics.
+        Generate 6 distinct content ideas. Use the Global Trends as hooks but solve the specific problems of the Industry and Audience listed above.
         """
 
-        # Gemini 2.5 supports 'response_mime_type' for guaranteed JSON
         response = self.client.models.generate_content(
             model=self.model_id,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                # Define the exact schema your iOS app expects
+                # STRICT SCHEMA: Matches publish_ready_posts table
                 response_schema={
                     "type": "object",
                     "properties": {
@@ -50,21 +51,25 @@ class StrategicGenerator:
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "platform": {"type": "string"},
-                                    "content": {"type": "string"},
+                                    "post_heading": {"type": "string", "description": "The title or headline of the post."},
+                                    "platform_icon": {"type": "string", "enum": ["icon-x", "icon-instagram", "icon-linkedin"]},
+                                    "caption": {"type": "string", "description": "The full body text of the post."},
                                     "hashtags": {"type": "array", "items": {"type": "string"}},
-                                    "trend_ref": {"type": "string"},
-                                    "predicted_score_reason": {"type": "string"}
-                                }
+                                    "prediction_text": {"type": "string", "description": "Why this content will perform well for this specific audience."}
+                                },
+                                "required": ["post_heading", "platform_icon", "caption", "hashtags", "prediction_text"]
                             }
                         }
                     }
                 }
             )
         )
-        return response.text
+        return json.loads(response.text).get("posts", [])
     
     def generate_trend_deep_dive(self, trend: dict, context: dict):
+        """
+        Phase 3: Deep analysis when a user clicks a specific trend card.
+        """
         prompt = f"""
         Analyze this trend for a {context['role']}:
         Trend: {trend['topic_name']} - {trend['short_description']}
@@ -73,12 +78,11 @@ class StrategicGenerator:
         1. Explain why this matters to their brand.
         2. Generate 4 publish-ready templates (The Contrarian, The Educator, The Visionary, The Connector).
         
-        Return as JSON matching the 'publish_ready_posts' schema.
+        Return as JSON.
         """
-        # Gemini 2.5 Flash handles this reasoning in <1s
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=self.model_id,
             contents=prompt,
             config=types.GenerateContentConfig(response_mime_type="application/json")
         )
-        return response.text
+        return json.loads(response.text)

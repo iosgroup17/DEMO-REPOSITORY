@@ -12,22 +12,21 @@ class SupabaseContextManager:
         self.supabase: Client = create_client(url, key)
 
     def fetch_top_trends(self, limit: int = 10):
-        """Fetches raw ingredients for the iPhone's local LLM."""
         try:
-            response = self.supabase.table("dummy_trending_topics") \
-                .select("id, created_at, source, topic_name, short_description, trending_context, platform_icon, hashtags") \
+            response = self.supabase.table("trending_topics") \
+                .select("*") \
                 .order("created_at", desc=True) \
                 .limit(limit) \
                 .execute()
             return response.data
         except Exception as e:
-            print(f"Database Fetch Error: {e}")
+            print(f"Fetch Error: {e}")
             return []
 
     def push_new_trends(self, trends: list):
         """Saves cleaned trends from Gemini/Apify into Supabase."""
         try:
             if not trends: return
-            return self.supabase.table("dummy_trending_topics").insert(trends).execute()
+            return self.supabase.table("trending_topics").insert(trends).execute()
         except Exception as e:
             print(f"Database Insert Error: {e}")

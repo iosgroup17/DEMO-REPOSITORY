@@ -1,34 +1,64 @@
 import os
 import json
 from apify_client import ApifyClient
+from app.database import SupabaseContextManager
 from google import genai
 from google.genai import types
 
 class TrendService:
-    def __init__(self):
-        self.apify_client = ApifyClient(os.getenv("APIFY_API_KEY"))
+    def __init__(self, api_token: str):
+        if not api_token:
+            raise ValueError("No Apify Token provided.")
+        self.apify_client = ApifyClient(api_token)
+        self.db = SupabaseContextManager()
         self.ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-    def get_raw_feeds(self):
-        """Triggers the manju4k 6-in-1 scraper with corrected platform names."""
-        run_input = {
-            # IMPORTANT: Use "twitter", NOT "x"
-            "platforms": ["twitter", "instagram", "reddit", "youtube"], 
-            "region": "US",
-            "timeRange": "24h",
-            "maxTrends": 10,
-            "includeMetrics": False # Set to False to keep the data clean for Gemini
-        }
+    def sync_all_industries(self):
+        industries = [
+            "Technology & Software",
+            "Marketing, Branding & Growth",
+            "Finance, Strategy & Operations",
+            "Design, Product & UX",
+            "Education, Coaching & Knowledge",
+            "Media, Content & Community"
+        ]
+        
+        for industry in industries:
+            print(f"🚀 Processing Industry: {industry}")
+            
+            run_input = {
+                "search": industry,
+                "platforms": ["twitter", "instagram"],
+                "maxTrends": 10,
+                "region": "IN"
+            }
+            
+            try:
+                run = self.apify_client.actor("manju4k/social-media-trend-scraper-6-in-1-ai-analysis").call(run_input=run_input)
+                raw_items = list(self.apify_client.dataset(run["defaultDatasetId"]).iterate_items())
+                
+                if not raw_items:
+                    print(f"No items found for {industry}")
+                    continue
+                
+                cleaned_trends = self._clean_data_with_gemini(raw_items, industry)
+                
+                if cleaned_trends:
+                    batch_to_insert = []
+                    for trend in cleaned_trends:
+                        trend["category"] = industry 
+                        batch_to_insert.append(trend)
+                    
+                    print(f"Inserting {len(batch_to_insert)} rows for category: '{batch_to_insert[0]['category']}'")
+                    
+                    self.db.supabase.table("trending_topics").insert(batch_to_insert).execute()
+                    print(f"Successfully updated {industry}")
+                    
+            except Exception as e:
+                print(f"Error syncing {industry}: {str(e)}")
 
-        print("📡 Triggering Apify with corrected platform names...")
-        # This line was crashing because of the input above
-        run = self.apify_client.actor("manju4k/social-media-trend-scraper-6-in-1-ai-analysis").call(run_input=run_input)
-    
-        dataset = self.apify_client.dataset(run["defaultDatasetId"])
-        return list(dataset.iterate_items())
-
-    def clean_trends(self, raw_data: list):
-        """Gemini translates raw scrapings into our iOS-ready schema with elaborate context."""
+    def _clean_data_with_gemini(self, raw_data: list, industry: str):
+        """Refines raw data into structured cards for the iOS UI."""
         response_schema = {
             "type": "object",
             "properties": {
@@ -37,32 +67,33 @@ class TrendService:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "source": {"type": "string", "enum": ["X", "LinkedIn", "Reddit", "YouTube"]},
                             "topic_name": {"type": "string"},
                             "short_description": {"type": "string"},
                             "trending_context": {
                                 "type": "string", 
-                                "description": "An elaborate 2-3 sentence explanation of the 'Why' behind the trend, including specific catalysts or debate points."
+                                "description": "Elaborate 2-3 sentence catalyst for the local AI."
                             },
                             "platform_icon": {
                                 "type": "string", 
-                                "enum": ["icon-instagram", "icon-x", "icon-linkedin"] # Corrected platform names
+                                "enum": ["icon-x", "icon-instagram", "icon-linkedin"]
                             },
                             "hashtags": {"type": "array", "items": {"type": "string"}}
                         },
-                        "required": ["source", "topic_name", "trending_context", "platform_icon"]
+                        "required": ["topic_name", "short_description", "platform_icon", "trending_context"]
                     }
                 }
             }
         }
 
         prompt = f"""
-        Analyze these raw social media trends for a personal branding app: {json.dumps(raw_data[:10])}.
+        Extract 5 trends for entrepreneurs in {industry} from: {json.dumps(raw_data[:10])}.
         
-        TASK:
-        1. Extract the top 5 highest-signal trends for professional branding.
-        2. The 'trending_context' MUST be elaborate: explain the specific catalyst (e.g., a new policy, a viral tweet, or a market shift) and the core tension/debate currently happening.
-        3. Ensure 'platform_icon' strictly follows the enum: icon-instagram, icon-x, or icon-linkedin.
+        RULES:
+        1.  For 'source', identify which platform the trend originated from (X, Instagram, or LinkedIn).
+        2. 'topic_name': Under 30 chars, catchy and short.
+        3. 'trending_context': MUST be elaborate. Explain the 'Why' and the 'How' for a professional brand.
+        4. 'platform_icon': Must be 'icon-instagram', 'icon-x', or 'icon-linkedin'.
+        5. 'short_description': Under 50 chars for mobile cards.
         """
 
         response = self.ai_client.models.generate_content(

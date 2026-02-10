@@ -1,43 +1,56 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// Use Deno.serve for the modern Supabase runtime
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 Deno.serve(async (req) => {
-  // 1. Setup Client
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_ANON_KEY') ?? ''
   )
 
   try {
-    // 2. Fetch the data from your table
-    const { data: trends, error } = await supabase
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) throw new Error('Missing Authorization header')
+    
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    if (authError || !user) throw new Error('Unauthorized')
+
+    // 1. Fetch the industry from onboarding_responses (Step Index 2)
+    const { data: onboardingData, error: onboardingError } = await supabase
+      .from('onboarding_responses')
+      .select('selection_tags')
+      .eq('user_id', user.id)
+      .eq('step_index', 2)
+      .single()
+
+    // selection_tags is an array, so we take the first choice
+    const userNiche = onboardingData?.selection_tags?.[0] || 'Technology & Software'
+
+    // 2. Query only trends matching that specific industry name
+    const { data: trends, error: dbError } = await supabase
       .from('trending_topics')
-      .select('id, topic_name, short_description, platform_icon, hashtags, created_at')
+      .select('*')
+      .eq('category', userNiche)
       .order('created_at', { ascending: false })
       .limit(10)
 
-    if (error) throw error
+    if (dbError) throw dbError
 
-    // 3. Return the exact structure your UIKit code expects
     return new Response(
-      JSON.stringify({
-        trendingTopics: trends || [],
-        publishReadyPosts: [],
-        topicDetails: [],
-        selectedPostDetails: []
-      }),
-      { 
-        headers: { "Content-Type": "application/json" },
-        status: 200 
-      }
+      JSON.stringify({ trendingTopics: trends || [] }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     )
 
   } catch (err) {
-    // If it fails, this will show the real error in the curl response
-    console.error("Crash Log:", err.message)
     return new Response(JSON.stringify({ error: err.message }), {
-      headers: { "Content-Type": "application/json" },
-      status: 500
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200
     })
   }
 })

@@ -108,3 +108,70 @@ class TrendService:
             )
         )
         return json.loads(response.text).get("trends", [])
+    
+    def generate_daily_suggestions(self, user_id: str, industry: str):
+        """Generates exactly 2 branding strategy cards for a user based on trends."""
+        # 1. Fetch context from your existing trends
+        trends = self.db.fetch_top_trends(limit=5)
+        
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "suggestions": {
+                    "type": "array",
+                    "minItems": 2, "maxItems": 2,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "body": {"type": "string"},
+                            "ai_rule": {"type": "string", "description": "Max 10 words"}
+                        },
+                        "required": ["title", "body", "ai_rule"]
+                    }
+                }
+            }
+        }
+
+        prompt = f"Based on {industry} trends: {json.dumps(trends)}, create 2 strategy cards. 'ai_rule' must be a tiny instruction for another AI (e.g. 'Use technical tone')."
+
+        # Use your existing Gemini instance
+        response = self.ai_client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema
+            )
+        )
+        
+        cards = json.loads(response.text).get("suggestions", [])
+        
+        # 2. Insert into the existing user_suggestions table
+        payload = [{
+            "user_id": user_id,
+            "industry": industry,
+            "title": c['title'],
+            "body": c['body'],
+            "ai_rule": c['ai_rule'],
+            "status": "pending"
+        } for c in cards]
+        
+        return self.db.supabase.table("user_suggestions").insert(payload).execute()
+    
+    def sync_daily_suggestions(self, user_id: str, industry: str):
+        """Generates and saves the 3 daily suggestions for a specific user."""
+        trends = self.db.fetch_top_trends(limit=5)
+        new_suggestions = self.generate_smart_suggestions_logic(industry, trends)
+        
+        db_payload = []
+        for s in new_suggestions:
+            db_payload.append({
+                "user_id": user_id,
+                "industry": industry,
+                "title": s['title'],
+                "body": s['body'],
+                "ai_rule": s['ai_rule']
+            })
+        
+        self.db.push_user_suggestions(db_payload)

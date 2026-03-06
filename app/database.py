@@ -30,3 +30,10 @@ class SupabaseContextManager:
             return self.supabase.table("trending_topics").insert(trends).execute()
         except Exception as e:
             print(f"Database Insert Error: {e}")
+
+    def push_user_suggestions(self, suggestions: list):
+        """Inserts exactly 2 suggestions per day into Supabase."""
+        try:
+            return self.supabase.table("user_suggestions").insert(suggestions).execute()
+        except Exception as e:
+            print(f"Error inserting suggestions: {e}")

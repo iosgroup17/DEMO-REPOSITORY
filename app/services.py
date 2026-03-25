@@ -93,10 +93,10 @@ class TrendService:
         
         RULES:
         1.  For 'source', identify which platform the trend originated from (X, Instagram, or LinkedIn).
-        2. 'topic_name': Under 30 chars, catchy and short.
+        2. 'topic_name': Under 10 chars, catchy and short.
         3. 'trending_context': MUST be elaborate. Explain the 'Why' and the 'How' for a professional brand.
         4. 'platform_icon': Must be 'icon-instagram', 'icon-x', or 'icon-linkedin'.
-        5. 'short_description': Under 50 chars for mobile cards.
+        5. 'short_description': Under 70 chars for mobile cards.
         """
 
         response = self.ai_client.models.generate_content(
